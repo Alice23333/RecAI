@@ -1,0 +1,9 @@
+# this is .gitignore file, followings are ignored
+
+**/__pycache__/
+output/
+data/
+
+eval_models/*
+!eval_models
+*.log

@@ -1,0 +1,7 @@
+.env
+*.env
+hf_model/
+*.bin
+*.safetensors
+*.pth
+__pycache__/
