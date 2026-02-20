@@ -1,5 +1,19 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
+# BaseGallery 是一个支持 SQL 查询、模糊匹配、字段解释、ID/标题转换的数据访问层。在你的 CRSAgent 架构里：LLM->Tool->BaseGallery->返回候选ID
+
+############ 我的配置 #############
+import os
+import logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(filename)s - %(levelname)s - %(message)s")
+
+# os.environ["HTTP_PROXY"] = "http://127.0.0.1:7890"
+# os.environ["HTTPS_PROXY"] = "http://127.0.0.1:7890"
+
+# from dotenv import load_dotenv
+base_dir = os.path.join(os.path.dirname(__file__), '..', '..', '..')
+model_path = os.path.join(base_dir, 'InteRecAgent', 'hf_model', 'gte-base')
+##################################
 
 import json
 import random
@@ -61,7 +75,8 @@ class BaseGallery:
         else:
             device = 'cpu'
         # _fuzzy_bert_engine = SentenceTransformer(self._fuzzy_bert_base, device=device)
-        _fuzzy_bert_engine = SentenceTransformer("D:/RecAI/RecAI-main/InteRecAgent/hf_model/gte-base")
+        logging.info(f"Loading model from: {model_path}")
+        _fuzzy_bert_engine = SentenceTransformer(model_path)
         self.fuzzy_engine: Dict[str, SentBERTEngine] = {
             col: SentBERTEngine(
                 self.corups[col].to_numpy(),
@@ -78,9 +93,13 @@ class BaseGallery:
             )
             for col in fuzzy_cols
         }
+
+        self.sql_columns = list(self.corups.columns)
         self.fuzzy_engine['sql_cols'] = SentBERTEngine(
-            np.array(columns), 
-            np.arange(len(columns)),
+            # np.array(columns), 
+            # np.arange(len(columns)),
+            np.array(self.sql_columns), 
+            np.arange(len(self.sql_columns)),
             case_sensitive=False,
             model=_fuzzy_bert_engine
         )   # fuzzy engine for column names
@@ -112,6 +131,7 @@ class BaseGallery:
     def __len__(self) -> int:
         return len(self.corups)
 
+    # 生成数据库的自然语言说明给LLM写sql用
     def info(self, remove_game_titles: bool=False, query: str=None):
         prefix = 'Table information:'
         table_name = f"Table Name: {self.name}"
@@ -123,7 +143,7 @@ class BaseGallery:
             dtype = _pd_type_to_sql_type(self.corups[col])
             cols_info += f"\n    - {col}({dtype}): {self.column_meaning[col]}"
             if col == 'tags':
-                disp_values = self.sample_categoricol_values(col, total_n=self.disp_cate_total, query=query, topk=self.disp_cate_topk)
+                disp_values = self.sample_categorical_values(col, total_n=self.disp_cate_total, query=query, topk=self.disp_cate_topk)
                 _prefix = f" Related values: [{', '.join(disp_values)}]."
                 cols_info += _prefix
 
@@ -144,10 +164,12 @@ class BaseGallery:
         res = prefix + res
         return res
 
-    def sample_categoricol_values(self, col_name: str, total_n: int, query: str=None, topk: int=None) -> List:
+    def sample_categorical_values(self, col_name: str, total_n: int, query: str=None, topk: int=None) -> List:
         # Select topk related tags according to query and sample (total_n-topk) tags
         if query is None:
-            result = random.sample(self.categorical_col_values[col_name], k=total_n)
+            # result = random.sample(self.categorical_col_values[col_name], k=total_n)
+            population = list(self.categorical_col_values[col_name])
+            result = random.sample(population, k=total_n)
         else:
             if topk is None:
                 topk = total_n
@@ -155,6 +177,7 @@ class BaseGallery:
             topk_values = self.fuzzy_engine[col_name](query, return_doc=True, topk=topk)
             topk_values = list(topk_values)
             result = topk_values
+            # 加入随机补充标签是为了保持语义相关性的同时，引入多样性，防止推荐坍缩。Exploration + Exploitation
             if total_n > topk:
                 while (len(result) < total_n) and (len(result) < len(self.categorical_col_values[col_name])):
                     random_values = random.choice(self.categorical_col_values[col_name])
