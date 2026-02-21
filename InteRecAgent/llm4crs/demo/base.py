@@ -1,5 +1,20 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
+# 这份代码本质上是一个 Few-shot 示例选择与拼接模块（Demo 选择器），用于给 Agent 动态构造“示例驱动的 Prompt”。
+# 它的核心作用是：根据当前用户请求，自动选出合适的示例（demonstrations），并拼成一个 Few-shot Prompt。
+
+############ 我的配置 #############
+import os
+import logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(filename)s - %(levelname)s - %(message)s")
+
+# os.environ["HTTP_PROXY"] = "http://127.0.0.1:7890"
+# os.environ["HTTPS_PROXY"] = "http://127.0.0.1:7890"
+
+# from dotenv import load_dotenv
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+model_path = os.path.join(project_root, 'hf_model', 'all-mpnet-base-v2')
+##################################
 
 import os
 import json
@@ -43,13 +58,14 @@ class DemoSelector:
             "input_variables": ["in_request"],
         }
         if self.mode == 'dynamic':
+            logging.info(f"Loading model from: {model_path}")
             selector = example_selector.SemanticSimilarityExampleSelector.from_examples(
                 # This is the list of examples available to select from.
                 self.examples, 
-                # This is the embedding class used to produce embeddings which are used to measure semantic similarity.
+                # This is the embedding class used to produce embeddings which are used to measure semantic similarity. 用 HuggingFace 模型生成示例 embedding
                 # HuggingFaceEmbeddings(), 
-                HuggingFaceEmbeddings(model_name="D:/RecAI/RecAI-main/InteRecAgent/hf_model/all-mpnet-base-v2"), 
-                # This is the VectorStore class that is used to store the embeddings and do a similarity search over.
+                HuggingFaceEmbeddings(model_name=model_path), 
+                # This is the VectorStore class that is used to store the embeddings and do a similarity search over. 存入 Chroma 向量数据库
                 Chroma, 
                 # This is the number of examples to produce.
                 k=self.k
@@ -78,13 +94,15 @@ class DemoSelector:
     def __call__(self, request: str):
         return self.prompt.format(in_request=request)
 
-    
+    # 让通用示例适配不同领域。
     def fit_domain(self, examples: List[Dict], domain: str):
         # fit examples into domains: replace placeholder with domain-related words, like replacing item with movie, game
         domain_map = {'item': domain, 'Item': domain.capitalize(), 'ITEM': domain.upper()}
         
         res = []
         for case in examples:
+            if not case:
+                continue
             _case = {}
             _case['request'] = replace_substrings_regex(case['request'], domain_map)
             _case['plan'] = replace_substrings_regex(case['plan'], domain_map)
@@ -95,7 +113,9 @@ class DemoSelector:
 
 
 if __name__ == "__main__":
-    selector = DemoSelector("./LLM4CRS/demonstration/gen_demos/2023-06-28-08_53_56.jsonl", k=3)
+    # selector = DemoSelector("./LLM4CRS/demonstration/gen_demos/2023-06-28-08_53_56.jsonl", k=3)
+    demo_dir_or_file = os.path.join(project_root, 'demonstration', 'gen_demos', '2026-02-15-23_26_59_input-first.jsonl')
+    selector = DemoSelector(mode="dynamic", demo_dir_or_file=demo_dir_or_file, k=3, domain="game")
     request = "I want some farming games."
 
     demo_prompt = selector(request)
