@@ -1,3 +1,5 @@
+# 这段代码实现的是一个：基于 LLM 的长期用户画像记忆模块（User Profile Memory）
+# 它的作用是：从对话中自动抽取用户的兴趣历史、喜欢、不喜欢并持续更新成结构化的用户画像
 
 import json
 
@@ -55,7 +57,7 @@ class UserProfileMemory:
         prompt = "Your task is to correct the string to json format. Here are two examples of the format:\n{\"history\": [\"ITEM-1\", \"ITEM-2\", \"ITEM-3\"], \"like\": [\"ITEM-100\"], \"unwanted\": [\"ITEM-17\", \"ITEM-19\", \"ITEM-30\"]}\nThe string to be corrected is {err_resp}. It can not be parsed by Python json.loads(). Now give the corrected json format string.".replace("{err_resp}", err_resp)
         return self.llm_engine.call(
             user_prompt=prompt,
-            sys_prompt="You are an assistent and good at writing json string.",
+            sys_prompt="You are an assistant and good at writing json string.",
             temperature=0.0
         )
 
